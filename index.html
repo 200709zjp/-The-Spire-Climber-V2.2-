@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>这个怪楼有点高</title>
+<style>
+  :root{--sa-t:env(safe-area-inset-top);--sa-r:env(safe-area-inset-right);--sa-b:env(safe-area-inset-bottom);--sa-l:env(safe-area-inset-left);--stick-d:132px;--stick-k:56px;}
+  /* 竖屏持握时把整个舞台旋转成横屏：body 成为所有 fixed 元素的包含块，画布/DOM 控件一起旋转 */
+  html.force-landscape body{position:fixed;left:0;top:0;margin:0;transform-origin:0 0;transform:rotate(90deg) translateY(-100%);}
+  html.force-landscape.orient-flip body{transform:rotate(-90deg) translateX(-100%);}
+  html.force-landscape #rotate{display:none;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;overscroll-behavior:none;
+    background:
+      radial-gradient(65% 55% at 50% 48%, rgba(92,38,24,.18) 0%, rgba(20,15,26,.0) 70%),
+      radial-gradient(120% 95% at 50% 0%, #191421 0%, #0b090f 62%, #050407 100%);
+    font-family:"Noto Serif SC","Source Han Serif SC","Songti SC","Microsoft YaHei UI","Microsoft YaHei",serif;
+    -webkit-user-select:none;user-select:none;}
+  /* touch-action 只锁游戏表面：body 若设 none 会因祖先交集规则禁掉面板滚动，触屏够不到折叠线以下的按钮 */
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;touch-action:none;}
+  #wrap::before{content:"";position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(circle at 50% 50%, transparent 58%, rgba(0,0,0,.40) 100%);}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#0a090d;
+    border:1px solid rgba(181,131,47,.42);
+    outline:2px solid #050407;
+    box-shadow:0 0 0 4px #17131f, 0 0 0 5px rgba(158,109,34,.28), 0 28px 90px rgba(0,0,0,.88);
+    border-radius:2px;}
+  #ui{position:fixed;pointer-events:none;z-index:2;image-rendering:auto;background:transparent;
+    border:none;outline:none;box-shadow:none;}
+  #dbg{display:none;position:fixed;left:8px;top:8px;font:11px/1.5 Consolas,monospace;color:#c8bca8;
+    background:rgba(10,9,13,.86);border:1px solid rgba(181,131,47,.35);padding:6px 8px;white-space:pre;pointer-events:none;z-index:9;}
+  #tip{display:none;}
+  #rotate{display:none;position:fixed;left:50%;top:calc(10px + var(--sa-t));transform:translateX(-50%);z-index:6;
+    font:12px/1.4 "Noto Serif SC","Microsoft YaHei",serif;color:#ebb34b;background:rgba(10,9,13,.88);
+    border:1px solid rgba(181,131,47,.45);border-radius:20px;padding:6px 18px;pointer-events:none;white-space:nowrap;
+    box-shadow:0 4px 18px rgba(0,0,0,.6);}
+  @media (pointer:coarse) and (orientation:portrait){ #rotate{display:block;} }
+  #boot,#fatal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;
+    box-sizing:border-box;width:min(88vw,420px);padding:18px 20px;border:1px solid rgba(181,131,47,.55);
+    background:rgba(12,9,14,.96);color:#ecdcb8;font:14px/1.7 "Microsoft YaHei UI",sans-serif;
+    text-align:center;white-space:pre-line;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.7);}
+  #fatal{display:none;color:#ffb0a8;border-color:rgba(224,60,49,.75);}
+  #fatal button{margin-top:12px;min-height:42px;min-width:132px;border:1px solid rgba(224,60,49,.7);border-radius:6px;background:#2a1517;color:#ffd9d1;font:14px "Microsoft YaHei UI",sans-serif;cursor:pointer;}
+  [hidden]{display:none!important}
+  #wrap{inset:var(--sa-t) var(--sa-r) var(--sa-b) var(--sa-l)}
+  button,input,select{font:inherit}
+  button{cursor:pointer}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #d7b56c;outline-offset:3px}
+  /* 面板滚动改由指针拖拽驱动（旋转+fixed 容器内原生触摸滚动在部分真机失效）；touch-action:none 关掉原生手势避免双重滚动，滚轮/键盘不受影响 */
+  .native-panel{position:fixed;inset:0;z-index:12;box-sizing:border-box;overflow:auto;touch-action:none;overscroll-behavior:contain;padding:max(14px,var(--sa-t)) max(16px,var(--sa-r)) max(14px,var(--sa-b)) max(16px,var(--sa-l));background:rgba(8,6,11,.98);color:#e8dfce;font:14px/1.5 "Microsoft YaHei UI",sans-serif;scrollbar-width:thin;scrollbar-color:#66523b rgba(20,15,26,.6)}
+  .native-panel::-webkit-scrollbar{width:8px}
+  .native-panel::-webkit-scrollbar-track{background:rgba(20,15,26,.6)}
+  .native-panel::-webkit-scrollbar-thumb{background:#66523b;border-radius:4px;border:2px solid rgba(8,6,11,.9)}
+  .native-panel::-webkit-scrollbar-thumb:hover{background:#d7aa59}
+  .panel-body{max-width:760px;margin:0 auto}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+  .panel-head h1{font-size:24px;margin:0;color:#f4ecdc}
+  .native-panel p{color:#b9ada3;margin:8px 0 14px}
+  .native-panel button,.native-panel select{min-height:48px;border:1px solid #66523b;border-radius:6px;background:#201820;color:#e8dfce;padding:10px 16px;touch-action:manipulation}
+  .native-panel button[aria-selected="true"],.native-panel button.primary{background:#3b2920;border-color:#d7aa59;color:#ffe2a2}
+  .panel-tabs{display:flex;gap:8px;margin:12px 0 16px}
+  .panel-tabs button{flex:1}
+  .music-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .music-card{border:1px solid #41343e;background:#171119;padding:18px;border-radius:8px}
+  .music-card h2{font-size:18px;margin:0 0 4px}
+  .music-card button{width:100%;margin:8px 0 16px}
+  .music-card label{display:flex;align-items:center;justify-content:space-between}
+  .music-card input[type="range"]{display:block;width:100%;min-height:48px;margin:8px 0 0;accent-color:#d7aa59;touch-action:pan-x}
+  #binding-message{min-height:24px;color:#efb86b}
+  #binding-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+  #binding-list button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left}
+  #binding-list button.capturing{border-color:#edba64;background:#39291e}
+  .binding-key{color:#bba6dd;text-align:right}
+  .control-mode{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .control-mode select{flex:1}
+  #portrait-content{display:grid;gap:12px}
+  #portrait-content button{text-align:left;width:100%;font-size:16px}
+  #portrait-content h2{margin:10px 0 0;font-size:22px}
+  #portrait-content .menu-note{font-size:13px;color:#b9ada3}
+  #touch-controls{position:fixed;inset:0;z-index:5;pointer-events:none;touch-action:none}
+  .touch-cluster{position:absolute;bottom:calc(12px + var(--sa-b));height:126px;pointer-events:none}
+  .touch-left{left:0;bottom:0;width:46%;height:64%;pointer-events:auto;touch-action:none}
+  .touch-right{right:calc(8px + var(--sa-r));width:126px}
+  #stick-base{position:absolute;left:24px;bottom:24px;width:var(--stick-d);height:var(--stick-d);border:2px solid rgba(129,149,146,.75);border-radius:50%;
+    background:radial-gradient(circle at 50% 42%, rgba(23,38,38,.62), rgba(10,16,16,.80) 72%);
+    box-shadow:inset 0 0 0 4px rgba(0,0,0,.40), 0 6px 22px rgba(0,0,0,.50);}
+  #stick-base.active{border-color:#fff1c9;box-shadow:inset 0 0 0 4px rgba(0,0,0,.40), 0 0 18px rgba(145,185,134,.35);}
+  #stick-base.pulse{border-color:#ebb34b;box-shadow:inset 0 0 0 4px rgba(0,0,0,.40), 0 0 22px rgba(235,179,75,.45);}
+  #stick-base.slam{border-color:#d87663;box-shadow:inset 0 0 0 4px rgba(0,0,0,.40), 0 0 22px rgba(216,118,99,.5);}
+  #stick-axis{position:absolute;left:12px;right:12px;top:50%;height:2px;margin-top:-1px;background:rgba(129,149,146,.26);}
+  #stick-up{position:absolute;left:50%;top:-24px;transform:translateX(-50%);font:700 11px/1.2 "Microsoft YaHei UI",sans-serif;color:#91b986;letter-spacing:1px;white-space:nowrap;text-shadow:0 1px 3px #000;}
+  #stick-knob{position:absolute;left:50%;top:50%;width:var(--stick-k);height:var(--stick-k);margin:calc(-0.5 * var(--stick-k)) 0 0 calc(-0.5 * var(--stick-k));border-radius:50%;
+    border:2px solid #91b986;background:radial-gradient(circle at 38% 32%, #3d5a4c, #172422 72%);
+    box-shadow:inset 0 0 0 3px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.55);}
+  #stick-base.active #stick-knob{border-color:#fff1c9;}
+  #stick-preview{position:relative;width:var(--stick-d);height:var(--stick-d);margin:12px auto 4px;border:2px solid rgba(129,149,146,.75);border-radius:50%;
+    background:radial-gradient(circle at 50% 42%, rgba(23,38,38,.62), rgba(10,16,16,.80) 72%);}
+  #stick-preview i{position:absolute;left:50%;top:50%;width:var(--stick-k);height:var(--stick-k);margin:calc(-0.5 * var(--stick-k)) 0 0 calc(-0.5 * var(--stick-k));border-radius:50%;
+    border:2px solid #91b986;background:radial-gradient(circle at 38% 32%, #3d5a4c, #172422 72%);}
+  .control-mode input[type="range"]{flex:1;min-height:48px;accent-color:#d7aa59;touch-action:pan-x}
+  .control-mode output{min-width:52px;text-align:right;color:#efb86b}
+  .touch-key{position:absolute;box-sizing:border-box;width:56px;height:56px;border:2px solid #819592;border-radius:50%;color:#f2ebdd;background:rgba(17,28,29,.78);box-shadow:inset 0 0 0 4px rgba(0,0,0,.45);font:700 13px/1.2 "Microsoft YaHei UI",sans-serif;touch-action:none;pointer-events:auto;-webkit-tap-highlight-color:transparent}
+  .touch-key.held{background:rgba(90,138,108,.9);border-color:#fff1c9;transform:scale(.97)}
+  .touch-key:disabled{opacity:.35;pointer-events:none}
+  [data-touch="atk"]{right:0;bottom:0;width:60px;height:60px;border-color:#d87663;background:rgba(74,26,24,.84);font-size:17px}
+  [data-touch="dodge"]{right:70px;bottom:0;width:52px;height:52px;border-color:#91b986}
+  [data-touch="slot"]{right:4px;bottom:76px;border-color:#bb9fd4}
+  [data-touch="weapon"]{right:74px;bottom:70px;border-color:#c7a265}
+  #touch-pause{position:absolute;right:calc(8px + var(--sa-r));top:calc(8px + var(--sa-t));min-width:60px;min-height:48px;color:#f4ecdc;background:rgba(22,15,21,.9);border:1px solid #9b7b4b;border-radius:6px;pointer-events:auto;touch-action:manipulation}
+  #orient-flip{display:none;position:fixed;left:50%;bottom:calc(6px + var(--sa-b));transform:translateX(-50%);z-index:7;
+    min-height:26px;padding:3px 14px;border:1px solid rgba(181,131,47,.5);border-radius:14px;background:rgba(12,9,14,.82);
+    color:#d8c49a;font:12px/1.4 "Microsoft YaHei UI",sans-serif;letter-spacing:1px;pointer-events:auto;touch-action:manipulation;
+    opacity:.85;transition:opacity .4s;-webkit-tap-highlight-color:transparent;}
+  html.force-landscape #orient-flip{display:block;}
+  #orient-flip.dim{opacity:.3;}
+  #orient-flip:active{opacity:.95;}
+  #orient-toast{position:fixed;left:50%;bottom:calc(44px + var(--sa-b));transform:translateX(-50%);z-index:8;pointer-events:none;
+    padding:7px 18px;border:1px solid rgba(181,131,47,.55);border-radius:16px;background:rgba(10,8,13,.92);color:#f0dfb4;
+    font:13px/1.5 "Noto Serif SC","Microsoft YaHei",serif;white-space:nowrap;box-shadow:0 6px 22px rgba(0,0,0,.6);
+    opacity:0;transition:opacity .35s;}
+  #orient-toast.show{opacity:1;}
+  @media(max-width:560px){.music-grid,#binding-list{grid-template-columns:1fr}.music-card{padding:14px}.native-panel h1{font-size:22px}}
+  @media(max-height:440px) and (orientation:landscape){.native-panel{padding-top:10px}.panel-head{margin-bottom:6px}.panel-tabs{margin:6px 0 10px}.music-card{padding:12px}.music-card p{margin:4px 0}.music-card button{margin:4px 0 8px}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="720" height="405"></canvas><canvas id="ui"></canvas>
+  <div id="boot">正在载入魔塔…
+若长时间停留，请通过 HTTP 地址打开完整 game 目录</div>
+  <div id="fatal"></div>
+</div>
+<section id="settings-panel" class="native-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+  <div class="panel-body">
+    <header class="panel-head"><h1 id="settings-title">设置</h1><button id="settings-close" type="button">返回</button></header>
+    <nav class="panel-tabs" aria-label="设置分类"><button type="button" data-settings-tab="music" aria-selected="true">音乐</button><button type="button" data-settings-tab="controls" aria-selected="false">操控与键位</button></nav>
+    <div id="music-settings">
+      <p>分别设置游戏音效与背景音乐，修改会自动保存。</p>
+      <div class="music-grid">
+        <section class="music-card"><h2>音效</h2><p>攻击、脚步、受伤和危险提示</p><button id="sound-toggle" type="button" aria-pressed="true">音效：开</button><label for="sound-volume">音效音量 <output id="sound-percent">100%</output></label><input id="sound-volume" type="range" min="0" max="100" step="1" value="100"></section>
+        <section class="music-card"><h2>背景音乐</h2><p>菜单、攀登与 Boss 战配乐</p><button id="bgm-toggle" type="button" aria-pressed="true">背景音乐：开</button><label for="bgm-volume">背景音乐音量 <output id="bgm-percent">100%</output></label><input id="bgm-volume" type="range" min="0" max="100" step="1" value="100"></section>
+      </div>
+    </div>
+    <div id="control-settings" hidden>
+      <label class="control-mode" for="control-mode">操控模式<select id="control-mode"><option value="auto">自动识别设备</option><option value="keyboard">键盘</option><option value="touch">触屏</option></select></label>
+      <label class="control-mode" for="stick-size">摇杆大小<input id="stick-size" type="range" min="84" max="176" step="4" value="132"><output id="stick-size-out">132</output></label>
+      <label class="control-mode" for="stick-origin">摇杆原点<select id="stick-origin"><option value="float">跟随手指（浮动）</option><option value="fixed">全固定</option></select></label>
+      <div id="stick-preview" aria-hidden="true"><i></i></div>
+      <p>摇杆：滑动移动 · 上推跳 · 空中下推下砸。大小与原点模式实时生效并自动保存。</p>
+      <p id="binding-message" role="status">点击动作改绑；保留键和重复键不可用。</p>
+      <div id="binding-list"></div><button id="bindings-reset" type="button">恢复默认键位</button>
+    </div>
+  </div>
+</section>
+<section id="portrait-menu" class="native-panel" aria-label="游戏菜单" hidden><div class="panel-body"><header class="panel-head"><h1>这个怪楼有点高</h1></header><div id="portrait-content"></div></div></section>
+<div id="touch-controls" aria-label="触屏操控" hidden>
+  <button id="touch-pause" type="button">暂停</button>
+  <div class="touch-cluster touch-left" id="stick-zone" aria-label="移动摇杆：滑动移动，上推跳跃">
+    <div id="stick-base"><span id="stick-up">▲ 上推跳</span><i id="stick-axis"></i><div id="stick-knob"></div></div>
+  </div>
+  <div class="touch-cluster touch-right"><button type="button" class="touch-key" data-touch="atk" aria-label="攻击">攻</button><button type="button" class="touch-key" data-touch="dodge" aria-label="闪避">闪</button><button type="button" class="touch-key" data-touch="slot" aria-label="切换到远程">远程</button><button type="button" class="touch-key" data-touch="weapon" aria-label="切换同类武器">同类</button></div>
+</div>
+<div id="dbg"></div>
+<div id="rotate">旋转手机至横屏 · 体验更佳</div>
+<button id="orient-flip" type="button" aria-label="切换横屏方向">⇄ 换向</button>
+<div id="orient-toast" role="status"></div>
+<div id="tip">桌面：←→移动 Z跳 X攻击 C下砸
+手机：左半屏滑动移动 右半屏三键</div>
+<script>
+(function(){
+  var fatal=document.getElementById('fatal');
+  window.__showBootError=function(msg){
+    if(!fatal) return;
+    fatal.style.display='block';
+    fatal.textContent='';
+    var text=document.createElement('div'); text.textContent=msg; fatal.appendChild(text);
+    var close=document.createElement('button'); close.type='button'; close.textContent='关闭提示';
+    close.addEventListener('click',function(){ fatal.style.display='none'; });
+    fatal.appendChild(close);
+  };
+  function logRuntime(e){
+    try{ console.error('[游戏脚本·运行期已忽略]', (e && (e.error || e.reason || e.message)) || e); }catch(_){}
+  }
+  addEventListener('error',function(e){
+    /* 首帧成功后进入运行期：偶发异常只记录，不再用全屏红框打断游戏。 */
+    if(window.__gameReady){ logRuntime(e); return; }
+    if(e && e.message) window.__showBootError('游戏启动失败：'+e.message+'\n若使用本地文件打开，请改用 Chrome / Safari，并通过 HTTP 地址访问完整 game 目录。');
+  });
+  addEventListener('unhandledrejection',function(e){
+    if(window.__gameReady){ logRuntime(e); return; }
+    var r=e && e.reason;
+    window.__showBootError('游戏启动失败：'+(r && (r.stack || r.message) || '异步加载错误')+'\n请刷新页面重试。');
+  });
+})();
+</script>
+<script src="game.js?v=2.2-fix2" onerror="window.__showBootError('game.js 未加载\n请确认 game.js 与 index.html 在同一目录，并通过 HTTP 地址打开。')"></script>
+<script>
+addEventListener('load',function(){
+  setTimeout(function(){
+    var boot=document.getElementById('boot');
+    if(boot) boot.style.display='none';
+    if(!window.G) window.__showBootError('游戏未能启动\n请刷新页面重试，或改用 Chrome / Safari 打开。');
+  },500);
+});
+</script>
+</body>
+</html>
